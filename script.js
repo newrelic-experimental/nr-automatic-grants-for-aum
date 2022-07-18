@@ -263,6 +263,7 @@ const scriptRunner = async () =>{
 
     //Process each group in turn
     let accounts=[]
+    let totalAccountAdjustments=0
     accountGroups.forEach(async (group)=>{
         let adjustmentsRequired=0
         console.log(`\n\nGroup: ${group.displayName}`)
@@ -296,8 +297,10 @@ const scriptRunner = async () =>{
             })
         }
         console.log(adjustmentsRequired>0 ? `${adjustmentsRequired} adjustments were required` : "No adjustments required")
+        totalAccountAdjustments=totalAccountAdjustments+adjustmentsRequired
         
     })
+    setAttribute("accountAdjustments",totalAccountAdjustments)
 
     //Process global group account subscriptions
     console.log("\n\nProcessing global groups...")
@@ -313,6 +316,7 @@ const scriptRunner = async () =>{
         })
     })
     console.log(adjustmentsRequired>0 ? `${adjustmentsRequired} global adjustments were required` : "No global adjustments required")
+    setAttribute("globalAdjustments",adjustmentsRequired)
 
     return false
 }
