@@ -1,6 +1,6 @@
 [![New Relic Experimental header](https://github.com/newrelic/opensource-website/raw/master/src/images/categories/Experimental.png)](https://opensource.newrelic.com/oss-category/#new-relic-experimental)
 
-# [Project Name] 
+# Automatic Grants for AUM Synced Groups
 ![GitHub forks](https://img.shields.io/github/forks/newrelic-experimental/nr-automatic-grants-for-aum?style=social)
 ![GitHub stars](https://img.shields.io/github/stars/newrelic-experimental/nr-automatic-grants-for-aum?style=social)
 ![GitHub watchers](https://img.shields.io/github/watchers/newrelic-experimental/nr-automatic-grants-for-aum?style=social)
@@ -17,42 +17,61 @@
 ![GitHub pull requests closed](https://img.shields.io/github/issues-pr-closed/newrelic-experimental/nr-automatic-grants-for-aum)
 
 
->[Brief description - what is the project and value does it provide? How often should users expect to get releases? How is versioning set up? Where does this project want to go?]
+This script, that can be run in a New Relic Synthetic API monitor, automates the creation of grants for new groups as they appear after syncing via [SCIM AUM](https://docs.newrelic.com/docs/accounts/accounts/automated-user-management/automated-user-provisioning-single-sign/).
 
-## Value 
+This use case expects the accounts and roles that are the targets for the grants to already exist. Synced group names are expected to contain the account ID. This account ID is used along with a role mapping to determine what grants to generate.
 
-|Metrics | Events | Logs | Traces | Visualization | Automation |
-|:-:|:-:|:-:|:-:|:-:|:-:|
-|:white_check_mark:|:white_check_mark:|:x:|:white_check_mark:|:x:|:x:|
+Additionally the script creates grants for 'global' groups with roles specified by configuration.
 
-### List of Metrics,Events,Logs,Traces 
-|Name | Type | Description |
-|:-:|:-:|:-:|
-|*metric.name* | Metric| *description*|
-|*event.name* | Event|  *description*|
-|*log.name* | Log|  *description*|
-|*trace.name*| Trace| *description*
-|---|---|---|
 
-## Installation
+## Configuration
+Configuration is explained in the script. Add the [script.js](script.js) content to an "Endpoint availability" (Scripted API) synthetic monitor. 
 
-> [Include a step-by-step procedure on how to get your code installed. Be sure to include any third-party dependencies that need to be installed separately]
+You will require a user API key that has organisaztion management rights. Its highly recommended to supply this value via a [secure credential](https://docs.newrelic.com/docs/synthetics/synthetic-monitoring/using-monitors/store-secure-credentials-scripted-browsers-api-tests/). 
 
-## Getting Started
+To determine some configuration values you will need to use the New Relic graphQL API:[US Datacenter](https://api.newrelic.com/graphiql) / [EU Datacenter](https://api.eu.newrelic.com/graphiql)
 
->[Simple steps to start working with the software similar to a "Hello World"]
+### Local setup
+You can run this script locally, be sure to `npm install` to install dependencies then `node script.js` to run.
 
-## Usage
+### Authentication Domain ID
+You can discover your authentication domain ID with this graphQL query:
 
->[**Optional** - Include more thorough instructions on how to use the software. This section might not be needed if the Getting Started section is enough. Remove this section if it's not needed.]
+```
+{
+  actor {
+    organization {
+      authorizationManagement {
+        authenticationDomains {
+          authenticationDomains {
+            id
+            name
+          }
+        }
+      }
+    }
+  }
+}
+```
 
-## Building
-
->[**Optional** - Include this section if users will need to follow specific instructions to build the software from source. Be sure to include any third party build dependencies that need to be installed separately. Remove this section if it's not needed.]
-
-## Testing
-
->[**Optional** - Include instructions on how to run tests if we include tests with the codebase. Remove this section if it's not needed.]
+### Roles
+You can discover your role ID's with this graphQL query:
+```
+{
+  actor {
+    organization {
+      authorizationManagement {
+        roles {
+          roles {
+            id
+            name
+          }
+        }
+      }
+    }
+  }
+}
+```
 
 ## Support
 
@@ -73,6 +92,4 @@ If you believe you have found a security vulnerability in this project or any of
 
 ## License
 
-[Project Name] is licensed under the [Apache 2.0](http://apache.org/licenses/LICENSE-2.0.txt) License.
-
->[If applicable: [Project Name] also uses source code from third-party libraries. You can find full details on which libraries are used and the terms under which they are licensed in the third-party notices document.]
+Automatic Grants for AUM Synced Groups is licensed under the [Apache 2.0](http://apache.org/licenses/LICENSE-2.0.txt) License.
