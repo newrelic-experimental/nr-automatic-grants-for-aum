@@ -10,6 +10,9 @@ let lodash = require('lodash')
 *  ========== SETTINGS ===========================
 */
 
+//set to true to disable the actual creation of grants (for easier testing)
+const DRY_RUN = false  
+
 // US or EU New Relic Data center
 const REGION = "US"                      
 
@@ -42,9 +45,6 @@ const ACCOUNT_ROLES=[
 const GLOBAL_CANDIDATE_GROUPS=[
     {regex: /^MyGlobalGroup$/, roleDisplayName: "MyOtherCustomRole", roleId: 8888}
 ]
-
-//
-const DRY_RUN = false  //set to true to disable the actual creation of grants (for testing)
 
 
 // -----------------
