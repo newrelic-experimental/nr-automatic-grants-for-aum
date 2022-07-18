@@ -23,6 +23,7 @@ This use case expects the accounts and roles that are the targets for the grants
 
 Additionally the script creates grants for 'global' groups with roles specified by configuration.
 
+![diagram](auto-grant.png)
 
 ## Configuration
 Configuration is explained in the script. Add the [script.js](script.js) content to an "Endpoint availability" (Scripted API) synthetic monitor. 
