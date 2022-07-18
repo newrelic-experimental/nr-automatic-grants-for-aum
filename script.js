@@ -33,12 +33,14 @@ const CANDIDATE_ACCOUNT_GROUPS=[
 
 // The roles to grant to accounts discovered in the groups above
 //     (Your role ID's can be looked up in the graphql API, see docs)
-const ACCOUNT_ROLES=[{displayName: "MyCustomRole", roleId:9999}]
+const ACCOUNT_ROLES=[
+    {displayName: "MyCustomRole", roleId:9999}
+]
 
 // Global groups to aditionally add grants to for discovered accounts, along with the role to grant.
 //     (Your role ID's can be looked up in the graphql API, see docs)
 const GLOBAL_CANDIDATE_GROUPS=[
-    {regex: /^MyGlobalGroup$/, roleDisplayName: "MyOtherCustomRole", roleId: 8888},
+    {regex: /^MyGlobalGroup$/, roleDisplayName: "MyOtherCustomRole", roleId: 8888}
 ]
 
 
