@@ -43,6 +43,9 @@ const GLOBAL_CANDIDATE_GROUPS=[
     {regex: /^MyGlobalGroup$/, roleDisplayName: "MyOtherCustomRole", roleId: 8888}
 ]
 
+//
+const DRY_RUN = false  //set to true to disable the actual creation of grants (for testing)
+
 
 // -----------------
 //You should not have to edit below here
@@ -109,21 +112,27 @@ const  genericServiceCall = function(options) {
 *   roleId - role ID
 */
 const assignGrant = async (groupName,groupId,accountId,roleName, roleId) =>{
-    console.log(`Granting ${roleName}(${roleId}) on account ${accountId} to group ${groupName}(${groupId})  `)
-    const grantGQL=`mutation {
-        authorizationManagementGrantAccess(grantAccessOptions: {groupId: "${groupId}", accountAccessGrants: {accountId: ${accountId}, roleId: ${roleId}}}) {
-          roles {
-            name
-            roleId
-            id
-            displayName
-            accountId
-            type
-          }
-        }
-      }`
-    let response= await GQLPost(grantGQL) 
-    return response
+    if(DRY_RUN) {
+        console.log(`[DRY RUN] Granting ${roleName}(${roleId}) on account ${accountId} to group ${groupName}(${groupId})  `)
+        return true
+    } else {
+        console.log(`Granting ${roleName}(${roleId}) on account ${accountId} to group ${groupName}(${groupId})  `)
+        const grantGQL=`mutation {
+            authorizationManagementGrantAccess(grantAccessOptions: {groupId: "${groupId}", accountAccessGrants: {accountId: ${accountId}, roleId: ${roleId}}}) {
+            roles {
+                name
+                roleId
+                id
+                displayName
+                accountId
+                type
+            }
+            }
+        }`
+      let response= await GQLPost(grantGQL) 
+      return response
+    }
+
 }
 
 /*
