@@ -22,16 +22,19 @@ const API_KEY="NRAK-xxxx"  //consider using secure credential here $secure.you-s
 // The ID of your authentication domain. (You can find this in graphql API, see docs ) 
 const AUTH_DOMAIN_ID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 
-//AUM synced groups to detect and create grants for:  regular expression should idenitfy the groups. Use a capture group to capture the account ID and provide the index of that capture group.
+//Lookup account id by account name (for when the account name not id is inlucded in the AD group name)
+const ACCOUNT_ID_LOOKUP=false
+
+//AUM synced groups to detect and create grants for:  regular expression should idenitfy the groups. Use a capture group to capture the account ID and provide the index of that capture group. Alternatively if ACCOUNT_ID_LOOKUP is true then this should capture the account name which will have the account ID looked up.
 //
 // for example for the AUM group: "My-AUM-Group-22334455-Users"
-// the regex would be: /^My-AUM-Group-(\d+)-Users$/
+// the regex would be: /^My-AUM-Group-([^-]+)-Users$/
 // which would yield the account id in the first caputer group, index 1.
 //
-// e.g. "My-AUM-Group-22334455-Users".match(/^My-AUM-Group-(\d+)-Users$/)
+// e.g. "My-AUM-Group-22334455-Users".match(/^My-AUM-Group-([^-]+)-Users$/)
 
 const CANDIDATE_ACCOUNT_GROUPS=[
-    {regex:/^My-AUM-Group-(\d+)-Users$/, index:1}
+    {regex:/^My-AUM-Group-([^-]+)-Users$/, index:1}
 ]
 
 // The roles to grant to accounts discovered in the groups above
@@ -45,6 +48,16 @@ const ACCOUNT_ROLES=[
 const GLOBAL_CANDIDATE_GROUPS=[
     {regex: /^MyGlobalGroup$/, roleDisplayName: "MyOtherCustomRole", roleId: 8888}
 ]
+
+// Account lookup function to map group names in AD to New Relic group names
+const accountLookupMatch = (NRAccountName,adAccountName) => {
+    //you can transform the names here to deal with differences between new relic names and AD account names
+    //
+    //e.g. this example will match the names regardless of hypens
+    // return NRAccountName.replace('-','') == adAccountName
+
+    return  NRAccountName == adAccountName
+}
 
 
 // -----------------
@@ -179,7 +192,7 @@ const cursorGQL =  async (gql, cursorPath, dataPath) =>  {
     let nextCursor=null
     let gqlHasCursor = gql.includes("[[CURSOR]]")
     let cursorCount=0
-    console.log("Querying graphql api for data...")
+
     while (tryNextCursor) {
         cursorCount++
         let latestData=await GQLPost(gql,nextCursor)
@@ -201,7 +214,7 @@ const cursorGQL =  async (gql, cursorPath, dataPath) =>  {
             console.log(`Error: no data found for path ${dataPath} in response:`,latestData)
         }
     }
-    console.log(`GQL pages loaded: ${cursorCount}`)
+    //console.log(`GQL pages loaded: ${cursorCount}`)
     return dataChunks
 }
 
@@ -210,12 +223,36 @@ const cursorGQL =  async (gql, cursorPath, dataPath) =>  {
 *  ========== SCRIPT RUNNNER  ===========================
 */
 
+
+const getAccountList = async () => {
+    const accountsGQL=`{
+        actor {
+          organization {
+            accountManagement {
+              managedAccounts {
+                id
+                name
+              }
+            }
+          }
+        }
+      }`
+    let accountData = await GQLPost(accountsGQL,null)
+    console.log(`${accountData.data.actor.organization.accountManagement.managedAccounts.length} accounts found in organisation`)
+    return accountData.data.actor.organization.accountManagement.managedAccounts
+}
 /*
 * scriptRunner()
 * Main ansync flow control for script
 */
 
 const scriptRunner = async () =>{
+
+    //Lookup existing accounts for matching to account names within group name.
+    let orgAccountList=[]
+    if(ACCOUNT_ID_LOOKUP) {
+        orgAccountList = await getAccountList()
+    }
 
     // Search for all the auth groups in the given auth domain
     const groupsGQL=`{
@@ -253,7 +290,7 @@ const scriptRunner = async () =>{
       `.replace("cursor: null", "cursor: \"[[CURSOR]]\"")
     let groups= await cursorGQL(groupsGQL,"data.actor.organization.authorizationManagement.authenticationDomains.authenticationDomains[0].groups.nextCursor", "data.actor.organization.authorizationManagement.authenticationDomains.authenticationDomains[0].groups.groups")
 
-    //Filter all the groups down to only those that pass our ACCOUNT  regex filter
+    //Filter all the groups down to only those that pass our ACCOUNT regex filter
     let accountGroups = groups.filter((group)=>{
         let match=false
         CANDIDATE_ACCOUNT_GROUPS.forEach((candidate)=>{if(group.displayName.match(candidate.regex)){ match=true}})
@@ -273,37 +310,60 @@ const scriptRunner = async () =>{
     //Process each group in turn
     let accounts=[]
     let totalAccountAdjustments=0
+
     accountGroups.forEach(async (group)=>{
         let adjustmentsRequired=0
+        let accountIdList=[]
         console.log(`\n\nGroup: ${group.displayName}`)
 
-        //Determine the account ID using the regex capture group
-        let accountId
-        CANDIDATE_ACCOUNT_GROUPS.forEach((candidate)=>{
-            let matchResult=group.displayName.match(candidate.regex)
-            if( !accountId && matchResult && matchResult[candidate.index]){
-                accountId=matchResult[candidate.index]
-            }
-        })
-
-        if(!accountId) {
-            console.log("ERROR: No account ID detected for this group")
-        } else {
-            if(!accounts.includes(accountId)) {
-                accounts.push(accountId)
-            }
-            console.log(`Account: ${accountId}`)
-
-
-            //Determine account roles
-            ACCOUNT_ROLES.forEach(async (candidateRole)=>{
-                if(!group.roles.roles.some((role)=>{return role.roleId == candidateRole.roleId && role.accountId==accountId})) {
-                    adjustmentsRequired++
-                    console.log(`Grant required for account ${accountId} in account specific group ${group.displayName} for role ${candidateRole.displayName}(${candidateRole.roleId})`)
-                    await assignGrant(group.displayName,group.id,accountId,candidateRole.displayName, candidateRole.roleId)
+        if(ACCOUNT_ID_LOOKUP) {
+            //Determine the account ID directly using the regex capture group
+            CANDIDATE_ACCOUNT_GROUPS.forEach((candidate)=>{
+                let matchResult=group.displayName.match(candidate.regex)
+                if( matchResult && matchResult[candidate.index]){
+                    let matchedAccounts = orgAccountList.filter((account)=>{ 
+                        return accountLookupMatch(account.name,matchResult[candidate.index])
+                    })
+                    matchedAccounts.forEach((account)=>{
+                        accountIdList.push(account.id)
+                    })
                 }
-
             })
+        } else {
+            //Determine the account ID directly using the regex capture group
+            CANDIDATE_ACCOUNT_GROUPS.forEach((candidate)=>{
+                let matchResult=group.displayName.match(candidate.regex)
+                if( accountIdList.length==0 && matchResult && matchResult[candidate.index]){ //only match the first candidate
+                    accountIdList.push(matchResult[candidate.index])
+                }
+            })
+        }
+
+
+        
+
+        if(accountIdList.length == 0) {
+            console.log("ERROR: No account IDs detected for this group")
+        } else {
+
+            accountIdList.forEach((accountId)=>{
+                if(!accounts.includes(accountId)) { //add to global account id list
+                    accounts.push(accountId)
+                }
+                //console.log(`Account: ${accountId}`)
+    
+    
+                //Determine account roles
+                ACCOUNT_ROLES.forEach(async (candidateRole)=>{
+                    if(!group.roles.roles.some((role)=>{return role.roleId == candidateRole.roleId && role.accountId==accountId})) {
+                        adjustmentsRequired++
+                        await assignGrant(group.displayName,group.id,accountId,candidateRole.displayName, candidateRole.roleId)
+                    }
+    
+                })
+            })
+
+
         }
         console.log(adjustmentsRequired>0 ? `${adjustmentsRequired} adjustments were required` : "No adjustments required")
         totalAccountAdjustments=totalAccountAdjustments+adjustmentsRequired

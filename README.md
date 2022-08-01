@@ -32,6 +32,11 @@ You will require a user API key that has organisaztion management rights. Its hi
 
 To determine some configuration values you will need to use the New Relic graphQL API:[US Datacenter](https://api.newrelic.com/graphiql) / [EU Datacenter](https://api.eu.newrelic.com/graphiql)
 
+### Account Name ID Lookup
+By default the script expects the AUM Group names to include the New Relic accountId in them. The ID is extracted from the group name and used for the grant. However, the script also supports the account name rather than ID to be included in the group name. If this matches your use case then set `ACCOUNT_ID_LOOKUP` to `true`. This will cause the script to lookup the account names and ID's and then match by name to determine the account ID. This has the added benefit of allowing multiple accounts to match allowing you to add grants to more than one account.
+
+If you NR account names dont exactly match the component in your AD group name then you may customise the `accountLookupMatch()` function to manipulate the names accordingly. This method should return true if the parameters match. For instance you might have account names in AUM groups like this: "SomeAccountName" but in New Relic there might look like "Some Account Name". This feature allows you to easily deal with these simple differences.
+
 ### Local setup
 You can run this script locally, be sure to `npm install` to install dependencies then `node script.js` to run.
 
