@@ -19,7 +19,7 @@
 
 This script, that can be run in a New Relic Synthetic API monitor, automates the creation of grants for new groups as they appear after syncing via [SCIM AUM](https://docs.newrelic.com/docs/accounts/accounts/automated-user-management/automated-user-provisioning-single-sign/).
 
-This use case expects the accounts and roles that are the targets for the grants to already exist. Synced group names are expected to contain the account ID. This account ID is used along with a role mapping to determine what grants to generate.
+This use case expects the accounts and roles that are the targets for the grants to already exist. Synced group names are expected to contain the account ID. This account ID is used along with a role mapping to determine what grants to generate. (The groups may instead include account name and a lookup will be made, see details below.)
 
 Additionally the script creates grants for 'global' groups with roles specified by configuration.
 
