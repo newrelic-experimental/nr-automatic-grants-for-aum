@@ -32,15 +32,16 @@ const ACCOUNT_ID_LOOKUP=false
 // which would yield the account id in the first caputer group, index 1.
 //
 // e.g. "My-AUM-Group-22334455-Users".match(/^My-AUM-Group-([^-]+)-Users$/)
+//
+// The roles to grant to accounts discovered should be supplied in the applyRoles attribute
+//     (Your role ID's can be looked up in the graphql API, see docs)
 
 const CANDIDATE_ACCOUNT_GROUPS=[
-    {regex:/^My-AUM-Group-([^-]+)-Users$/, index:1}
-]
-
-// The roles to grant to accounts discovered in the groups above
-//     (Your role ID's can be looked up in the graphql API, see docs)
-const ACCOUNT_ROLES=[
-    {displayName: "MyCustomRole", roleId:9999}
+    {
+        regex:/^My-AUM-Group-([^-]+)-Users$/, 
+        index:1,
+        applyRoles: [{displayName: "MyCustomRole", roleId:9999}]
+    }
 ]
 
 // Global groups to aditionally add grants to for discovered accounts, along with the role to grant.
@@ -293,7 +294,7 @@ const scriptRunner = async () =>{
     //Filter all the groups down to only those that pass our ACCOUNT regex filter
     let accountGroups = groups.filter((group)=>{
         let match=false
-        CANDIDATE_ACCOUNT_GROUPS.forEach((candidate)=>{if(group.displayName.match(candidate.regex)){ match=true}})
+        CANDIDATE_ACCOUNT_GROUPS.forEach((candidate)=>{if(group.displayName.match(candidate.regex)){ match=true;}})
         return match
     })
     //console.log("ACCOUNT GROUPS",accountGroups)
@@ -301,7 +302,7 @@ const scriptRunner = async () =>{
     //Filter all the groups down to only those matching the global group regex
     let globalGroups = groups.filter((group)=>{
         let match=false
-        GLOBAL_CANDIDATE_GROUPS.forEach((candidate)=>{if(group.displayName.match(candidate.regex)){ match=true}})
+        GLOBAL_CANDIDATE_GROUPS.forEach((candidate)=>{if(group.displayName.match(candidate.regex)){ match=true;}})
         return match
     })
     //console.log("GLOBAL GROUPS",globalGroups)
@@ -317,7 +318,7 @@ const scriptRunner = async () =>{
         console.log(`\n\nGroup: ${group.displayName}`)
 
         if(ACCOUNT_ID_LOOKUP) {
-            //Determine the account ID directly using the regex capture group
+            //Determine the account via lookup query using the regex capture group
             CANDIDATE_ACCOUNT_GROUPS.forEach((candidate)=>{
                 let matchResult=group.displayName.match(candidate.regex)
                 if( matchResult && matchResult[candidate.index]){
@@ -339,7 +340,13 @@ const scriptRunner = async () =>{
             })
         }
 
-
+        //Determine which roels to add to the group
+        CANDIDATE_ACCOUNT_GROUPS.forEach((candidate)=>{
+            let matchResult=group.displayName.match(candidate.regex)
+            if(matchResult ) {
+                group.applyRoles=candidate.applyRoles
+            }
+        })
         
 
         if(accountIdList.length == 0) {
@@ -352,15 +359,17 @@ const scriptRunner = async () =>{
                 }
                 //console.log(`Account: ${accountId}`)
     
-    
                 //Determine account roles
-                ACCOUNT_ROLES.forEach(async (candidateRole)=>{
-                    if(!group.roles.roles.some((role)=>{return role.roleId == candidateRole.roleId && role.accountId==accountId})) {
-                        adjustmentsRequired++
-                        await assignGrant(group.displayName,group.id,accountId,candidateRole.displayName, candidateRole.roleId)
-                    }
-    
-                })
+                if(group.applyRoles) {
+                    group.applyRoles.forEach(async (candidateRole)=>{
+                        if(!group.roles.roles.some((role)=>{return role.roleId == candidateRole.roleId && role.accountId==accountId})) {
+                            adjustmentsRequired++
+                            await assignGrant(group.displayName,group.id,accountId,candidateRole.displayName, candidateRole.roleId)
+                        }
+                    })
+                } else {
+                    console.log("Error: No roles to add to this group")
+                }
             })
 
 
@@ -379,7 +388,7 @@ const scriptRunner = async () =>{
         accounts.forEach(async (account)=>{
             if(!globalGroup.roles.roles.some((role)=>{return role.accountId==account && role.roleId==candidate.roleId})) {
                 adjustmentsRequired++
-                console.log(`Grant required for account ${account} in global group ${globalGroup.displayName}`)
+                //console.log(`Grant required for account ${account} in global group ${globalGroup.displayName}`)
                 await assignGrant(globalGroup.displayName,globalGroup.id,account,candidate.roleDisplayName, candidate.roleId)
             }
         })
