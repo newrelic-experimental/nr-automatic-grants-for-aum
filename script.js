@@ -9,9 +9,13 @@ let lodash = require('lodash')
 /*
 *  ========== SETTINGS ===========================
 */
+// ---- General settings ---
 
 //set to true to disable the actual creation of grants (for easier testing)
 const DRY_RUN = false  
+
+//set to true to get more verbose console logs
+const VERBOSE = false
 
 // US or EU New Relic Data center
 const REGION = "US"                      
@@ -21,6 +25,9 @@ const API_KEY="NRAK-xxxx"  //consider using secure credential here $secure.you-s
 
 // The ID of your authentication domain. (You can find this in graphql API, see docs ) 
 const AUTH_DOMAIN_ID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+
+// ---- Account groups ---
 
 //Lookup account id by account name (for when the account name not id is inlucded in the AD group name)
 const ACCOUNT_ID_LOOKUP=false
@@ -44,10 +51,22 @@ const CANDIDATE_ACCOUNT_GROUPS=[
     }
 ]
 
-// Global groups to aditionally add grants to for discovered accounts, along with the role to grant.
+// ---- Global groups ---
+
+// Lookup account IDs for global group subscriptions? If false then only accounts discovered via managed groups are considered. If true then the account list is looked up and all accounts are considered regardless of whether they have AUM groups associated.
+const GLOBAL_ACCOUNT_ID_LOOKUP = false 
+
+ //Accounts matching these regex rules wont have global groups applied to them
+const GLOBAL_ACCOUNT_BLOCK_LIST = [ 
+    {name: "Master accounts", regex: /^Your-block-account-regex$/}
+]
+
+// Global groups to aditionally add grants to for discovered (or looked up) accounts, along with the role to grant.
 //     (Your role ID's can be looked up in the graphql API, see docs)
+//     (Supply a block list specifically per group or use the global one defined above for each group. May also be omitted)
 const GLOBAL_CANDIDATE_GROUPS=[
-    {regex: /^MyGlobalGroup$/, roleDisplayName: "MyOtherCustomRole", roleId: 8888}
+    {regex: /^MyGlobalGroup$/, roleDisplayName: "MyOtherCustomRole", roleId: 8888, blockList: GLOBAL_ACCOUNT_BLOCK_LIST},
+    {regex: /^MyGlobalGroup2$/, roleDisplayName: "MyOtherCustomRole2", roleId: 88882}
 ]
 
 // Account lookup function to map group names in AD to New Relic group names
@@ -240,6 +259,7 @@ const getAccountList = async () => {
       }`
     let accountData = await GQLPost(accountsGQL,null)
     console.log(`${accountData.data.actor.organization.accountManagement.managedAccounts.length} accounts found in organisation`)
+    VERBOSE && console.log(accountData.data.actor.organization.accountManagement.managedAccounts)
     return accountData.data.actor.organization.accountManagement.managedAccounts
 }
 /*
@@ -249,9 +269,9 @@ const getAccountList = async () => {
 
 const scriptRunner = async () =>{
 
-    //Lookup existing accounts for matching to account names within group name.
+    //Lookup existing accounts for matching to account names within group name or for setting global groups
     let orgAccountList=[]
-    if(ACCOUNT_ID_LOOKUP) {
+    if(ACCOUNT_ID_LOOKUP || GLOBAL_ACCOUNT_ID_LOOKUP) {
         orgAccountList = await getAccountList()
     }
 
@@ -297,7 +317,7 @@ const scriptRunner = async () =>{
         CANDIDATE_ACCOUNT_GROUPS.forEach((candidate)=>{if(group.displayName.match(candidate.regex)){ match=true;}})
         return match
     })
-    //console.log("ACCOUNT GROUPS",accountGroups)
+    VERBOSE && console.log("\nACCOUNT GROUPS\n",JSON.stringify(accountGroups))
 
     //Filter all the groups down to only those matching the global group regex
     let globalGroups = groups.filter((group)=>{
@@ -305,7 +325,7 @@ const scriptRunner = async () =>{
         GLOBAL_CANDIDATE_GROUPS.forEach((candidate)=>{if(group.displayName.match(candidate.regex)){ match=true;}})
         return match
     })
-    //console.log("GLOBAL GROUPS",globalGroups)
+    VERBOSE && console.log("\nGLOBAL GROUPS\n",JSON.stringify(globalGroups))
 
 
     //Process each group in turn
@@ -380,16 +400,34 @@ const scriptRunner = async () =>{
     })
     setAttribute("accountAdjustments",totalAccountAdjustments)
 
-    //Process global group account subscriptions
-    console.log("\n\nProcessing global groups...")
+
+
+    // --------------Process global group account subscriptions-------------------
+    console.log("\n\nProcessing global group subscriptions...")
     let adjustmentsRequired=0
     GLOBAL_CANDIDATE_GROUPS.forEach(async (candidate)=>{
         let globalGroup=globalGroups.find((group)=>{ return group.displayName.match(candidate.regex)})
-        accounts.forEach(async (account)=>{
-            if(!globalGroup.roles.roles.some((role)=>{return role.accountId==account && role.roleId==candidate.roleId})) {
-                adjustmentsRequired++
-                //console.log(`Grant required for account ${account} in global group ${globalGroup.displayName}`)
-                await assignGrant(globalGroup.displayName,globalGroup.id,account,candidate.roleDisplayName, candidate.roleId)
+
+        //Determine accounts to apply global groups too
+        let candidateAccounts=[] 
+        if(GLOBAL_ACCOUNT_ID_LOOKUP) {
+            candidateAccounts=orgAccountList
+        } else {
+            candidateAccounts=accounts.map((account)=>{return { id: account, name:`Account #${account}`} })
+        }
+        candidateAccounts.forEach(async (account)=>{
+            if(!globalGroup.roles.roles.some((role)=>{return role.accountId==account.id && role.roleId==candidate.roleId})) {
+                let blocked = false
+                candidate.blockList.forEach((blockRule)=>{
+                    if(account.name.match(blockRule.regex)) {
+                        blocked=true
+                        VERBOSE && console.log(`Account "${account.name}" (#${account.id}) was excluded from global group assign for role ${candidate.roleDisplayName} (#${candidate.roleId}) due to block rule`,blockRule)
+                    }
+                })
+                if(!blocked){
+                    adjustmentsRequired++
+                    await assignGrant(globalGroup.displayName,globalGroup.id,account.id,candidate.roleDisplayName, candidate.roleId)
+                }
             }
         })
     })
@@ -401,7 +439,7 @@ const scriptRunner = async () =>{
 
 
 /*
-*  ========== RUN AYSNC ===========================
+*  ========== RUN ASYNC ===========================
 */
 try {
     scriptRunner().then((failed)=>{
