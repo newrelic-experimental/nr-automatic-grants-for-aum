@@ -12,7 +12,7 @@ let lodash = require('lodash')
 // ---- General settings ---
 
 //set to true to disable the actual creation of grants (for easier testing)
-const DRY_RUN = false  
+const DRY_RUN = true  
 
 //set to true to get more verbose console logs
 const VERBOSE = false
