@@ -37,6 +37,14 @@ By default the script expects the AUM Group names to include the New Relic accou
 
 If you NR account names dont exactly match the component in your AD group name then you may customise the `accountLookupMatch()` function to manipulate the names accordingly. This method should return true if the parameters match. For instance you might have account names in AUM groups like this: "SomeAccountName" but in New Relic there might look like "Some Account Name". This feature allows you to easily deal with these simple differences.
 
+
+### Global group lookup and block list
+The default operation is for accounts discovered via AUM group lookup to be used as candidates for grants to global groups. However you may instead require global grants to be made against all accounts regarldess of their AUM group state. 
+
+Setting `GLOBAL_ACCOUNT_ID_LOOKUP` to true will ignore the accounts discovered during the AUM group setup and instead lookup all the accounts via GraphQL.
+
+You may omit accounts from global group grants by setting the `blockList` field in the `GLOBAL_CANDIDATE_GROUPS` object. this should be an arry of objects with id and name attributes.
+
 ### Local setup
 You can run this script locally, be sure to `npm install` to install dependencies then `node script.js` to run.
 
