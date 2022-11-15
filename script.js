@@ -177,7 +177,7 @@ const assignGrant = async (groupName,groupId,accountId,roleName, roleId) =>{
 *   cursor - an optional cursor value
 */
 const GQLPost = async (gql,cursor) => {
-    gql = gql.replaceAll("\"[[CURSOR]]\"",cursor ? '"${cursor}"' : "null") //if there is a [[CURSOR]] then set its value.
+    gql = gql.replaceAll("\"[[CURSOR]]\"",cursor ? `"${cursor}"` : "null") //if there is a [[CURSOR]] then set its value.
     const options = { 
         url: GRAPHQL_API,
         method: 'POST',
