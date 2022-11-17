@@ -131,6 +131,19 @@ const  genericServiceCall = function(options) {
 
 
 /*
+* asyncForEach()
+*
+* A handy version of forEach that supports await.
+* @param {Object[]} array     - An array of things to iterate over
+* @param {function} callback  - The callback for each item
+*/
+async function asyncForEach(array, callback) {
+  for (let index = 0; index < array.length; index++) {
+    await callback(array[index], index, array);
+  }
+}
+
+/*
 *  ========== SCRIPT FUNCTIONS  ===========================
 */
 
@@ -206,15 +219,13 @@ const GQLPost = async (gql,cursor) => {
 *   cursorPath - a path to the attribute in the response json that contains the next cursor value
 *   dataPath - the path of the atrtibute that contains the repsonse data we're interested in
 */
-const cursorGQL =  async (gql, cursorPath, dataPath) =>  {
+const cursorGQL =  async (gql, cursorPath, dataPath, initCursor) =>  {
     let dataChunks=[]
     let tryNextCursor=true
-    let nextCursor=null
+    let nextCursor=initCursor ? initCursor : null
     let gqlHasCursor = gql.includes("[[CURSOR]]")
-    let cursorCount=0
 
     while (tryNextCursor) {
-        cursorCount++
         let latestData=await GQLPost(gql,nextCursor)
         let cursor = lodash.get(latestData,cursorPath,null)
         if(gqlHasCursor && cursor !== null) {
@@ -231,10 +242,9 @@ const cursorGQL =  async (gql, cursorPath, dataPath) =>  {
                 dataChunks.push(data)
             }
         } else {
-            console.log(`Error: no data found for path ${dataPath} in response:`,latestData)
+            console.log(`Error: no data found for path ${dataPath} in response:`,JSON.stringify(latestData))
         }
     }
-    //console.log(`GQL pages loaded: ${cursorCount}`)
     return dataChunks
 }
 
@@ -275,6 +285,7 @@ const scriptRunner = async () =>{
         orgAccountList = await getAccountList()
     }
 
+    console.log("Loading group and roles for organisation...")
     // Search for all the auth groups in the given auth domain
     const groupsGQL=`{
         actor {
@@ -296,6 +307,7 @@ const scriptRunner = async () =>{
                           type
                         }
                         totalCount
+                        nextCursor
                       }
                     }
                     nextCursor
@@ -310,6 +322,49 @@ const scriptRunner = async () =>{
       }
       `.replace("cursor: null", "cursor: \"[[CURSOR]]\"")
     let groups= await cursorGQL(groupsGQL,"data.actor.organization.authorizationManagement.authenticationDomains.authenticationDomains[0].groups.nextCursor", "data.actor.organization.authorizationManagement.authenticationDomains.authenticationDomains[0].groups.groups")
+
+    // Find and hydrate any groups that had role cursors in the response, these will need extra lookups to get all the data
+    await asyncForEach(groups,async (group)=>{
+        if(group.roles.nextCursor!=null) {
+            const rolesGQL=`{
+                actor {
+                  organization {
+                    authorizationManagement {
+                      authenticationDomains(id: "${AUTH_DOMAIN_ID}") {
+                        authenticationDomains {
+                          groups(id: "${group.id}") {
+                            groups {
+                              displayName
+                              id
+                              roles(cursor: null) {
+                                roles {
+                                  accountId
+                                  displayName
+                                  id
+                                  name
+                                  roleId
+                                  type
+                                }
+                                totalCount
+                                nextCursor
+                              }
+                            }
+                          }
+                          name
+                          id
+                        }
+                      }
+                    }
+                  }
+                }
+              }`.replace("cursor: null", "cursor: \"[[CURSOR]]\"")
+            let remainingRoles= await cursorGQL(rolesGQL,"data.actor.organization.authorizationManagement.authenticationDomains.authenticationDomains[0].groups.groups[0].roles.nextCursor", "data.actor.organization.authorizationManagement.authenticationDomains.authenticationDomains[0].groups.groups[0].roles.roles",group.roles.nextCursor)
+            group.roles.roles = [ ...group.roles.roles,...remainingRoles]
+        }
+        
+    })
+
+    console.log(`${groups.length} group's role information loaded.`)
 
     //Filter all the groups down to only those that pass our ACCOUNT regex filter
     let accountGroups = groups.filter((group)=>{
@@ -370,7 +425,7 @@ const scriptRunner = async () =>{
         
 
         if(accountIdList.length == 0) {
-            console.log("ERROR: No account IDs detected for this group")
+            console.log("ERROR: No account IDs detected for this group, this is almost certainly a configuration error.")
         } else {
 
             accountIdList.forEach((accountId)=>{
@@ -401,7 +456,6 @@ const scriptRunner = async () =>{
     setAttribute("accountAdjustments",totalAccountAdjustments)
 
 
-
     // --------------Process global group account subscriptions-------------------
     console.log("\n\nProcessing global group subscriptions...")
     let adjustmentsRequired=0
@@ -426,7 +480,9 @@ const scriptRunner = async () =>{
                 })
                 if(!blocked){
                     adjustmentsRequired++
-                    await assignGrant(globalGroup.displayName,globalGroup.id,account.id,candidate.roleDisplayName, candidate.roleId)
+                    if(adjustmentsRequired < 2) {
+                        await assignGrant(globalGroup.displayName,globalGroup.id,account.id,candidate.roleDisplayName, candidate.roleId)
+                    }
                 }
             }
         })
